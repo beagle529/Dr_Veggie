@@ -620,4 +620,4 @@ def ranking():
 # 6. 主程式啟動
 # ------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
