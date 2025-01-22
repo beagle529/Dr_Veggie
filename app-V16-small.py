@@ -144,35 +144,71 @@ challenge_template = """
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>第{{ level }}關</title>
+  <title>第{{ level }}關 v16</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const timeLimit = {{ time_limit }};
       let timeLeft = timeLimit;
+      let pauseTimeLeft = localStorage.getItem("pauseTimeLeft") || 30; // 默認暫停30秒
+      let isPaused = false;
+
       const progressBar = document.getElementById("progress-bar");
       const timerText = document.getElementById("timer-text");
+      const pauseBtn = document.getElementById("pause-btn");
       const form = document.getElementById("challenge-form");
 
-      const interval = setInterval(() => {
-        timeLeft -= 1;
+      const updateDisplay = () => {
         const progress = (timeLeft / timeLimit) * 100;
         progressBar.style.width = `${progress}%`;
         timerText.textContent = `${timeLeft} 秒`;
+      };
 
-        if (timeLeft <= 0) {
-          clearInterval(interval);
-          alert("時間到，遊戲結束！");
-          form.submit();
+      const countdown = setInterval(() => {
+        if (!isPaused) {
+          timeLeft -= 1;
+          updateDisplay();
+
+          if (timeLeft <= 0) {
+            clearInterval(countdown);
+            alert("時間到，遊戲結束！");
+            form.submit();
+          }
         }
       }, 1000);
+
+      pauseBtn.addEventListener("click", () => {
+        if (isPaused) {
+          isPaused = false;
+          pauseBtn.textContent = `暫停 (剩餘 ${pauseTimeLeft} 秒)`;
+        } else if (pauseTimeLeft > 0) {
+          isPaused = true;
+          pauseBtn.textContent = "繼續";
+          const pauseCountdown = setInterval(() => {
+            if (!isPaused || pauseTimeLeft <= 0) {
+              clearInterval(pauseCountdown);
+              isPaused = false;
+              pauseBtn.textContent = `暫停 (剩餘 ${pauseTimeLeft} 秒)`;
+              if (pauseTimeLeft <= 0) {
+                pauseBtn.disabled = true;
+              }
+            } else {
+              pauseTimeLeft -= 1;
+              localStorage.setItem("pauseTimeLeft", pauseTimeLeft);
+              pauseBtn.textContent = `繼續 (剩餘 ${pauseTimeLeft} 秒)`;
+            }
+          }, 1000);
+        }
+      });
+
+      updateDisplay();
     });
   </script>
 
   <style>
     .container {
-      max-width: 80%; /* 限制寬度為視窗的80% */
+      max-width: 80%;
       margin: auto;
       padding: 1rem;
     }
@@ -185,9 +221,9 @@ challenge_template = """
     }
 
     .card {
-      flex: 1 1 calc(33.333% - 1rem); /* 每列三欄 */
+      flex: 1 1 calc(33.333% - 1rem);
       max-width: calc(33.333% - 1rem);
-      min-width: 200px; /* 設定最小寬度 */
+      min-width: 200px;
     }
 
     .form-check {
@@ -217,7 +253,7 @@ challenge_template = """
 
     @media (max-width: 768px) {
       .card {
-        flex: 1 1 100%; /* 手機顯示單列 */
+        flex: 1 1 100%;
         max-width: 100%;
       }
 
@@ -270,13 +306,16 @@ challenge_template = """
       </div>
       <p id="timer-text" class="text-center fw-bold"> -- 秒</p>
       <div class="text-center mt-3">
+        <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">
+          暫停 (最多 30 秒)
+        </button>
+        <br>
         <button class="btn btn-success btn-lg" type="submit">交卷</button>
       </div>
     </form>
   </div>
 </body>
 </html>
-
 
 
 """
