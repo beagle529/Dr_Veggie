@@ -179,16 +179,17 @@ challenge_template = """
   </script>
   <style>
     .card-img-top {
-      height: 120px; 
+      height: 120px;
       object-fit: cover;
     }
 
+    /* 設定選項為按鈕 */
     .form-check {
       margin-bottom: 1rem;
     }
 
     .form-check-label {
-      font-size: 1.2rem; /* 放大文字大小 */
+      font-size: 1.2rem;
       padding: 15px; /* 增大點擊區域 */
       display: block; /* 讓整個按鈕可點擊 */
       border: 2px solid #007bff; /* 邊框色 */
@@ -215,9 +216,34 @@ challenge_template = """
       border-color: #004085; /* 選中後的邊框色 */
     }
 
+    /* RWD 設計 */
     @media (max-width: 768px) {
       .card {
         margin-bottom: 1.5rem;
+      }
+
+      .row {
+        display: block; /* 小螢幕直式排列 */
+      }
+
+      .col-md-4 {
+        width: 100%; /* 單欄全寬 */
+      }
+    }
+
+    @media (min-width: 769px) {
+      .row {
+        display: flex; /* 桌面設備橫向排列 */
+        justify-content: space-between;
+      }
+
+      .col-md-4 {
+        flex: 1;
+        margin-right: 15px;
+      }
+
+      .col-md-4:last-child {
+        margin-right: 0; /* 最後一欄不留空隙 */
       }
     }
   </style>
@@ -231,7 +257,7 @@ challenge_template = """
         {% for i in range(question_indices|length) %}
           {% set qidx = question_indices[i] %}
           {% set question = quiz_data[qidx] %}
-          <div class="col-12">
+          <div class="col-md-4">
             <div class="card">
               <img 
                 src="{{ url_for('static', filename='images/banner.gif') }}"
