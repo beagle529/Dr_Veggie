@@ -90,7 +90,7 @@ home_template = """
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>Dr.Veggie V.15</title>
+  <title>Dr.Veggie</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   
 <style>
@@ -144,37 +144,119 @@ challenge_template = """
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>第{{ level }}關 - V15</title>
+  <title>第{{ level }}關</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   
   <script>
   document.addEventListener("DOMContentLoaded", () => {
-    const timeLimit = {{ time_limit }};
-    let timeLeft = timeLimit;
-    let isPaused = false;
+    // 若 URL 傳參數 reset_pause=1，表示新玩家開始，需要重置暫停秒數
+    let urlParams = new URLSearchParams(window.location.search);
+    let resetPause = urlParams.get("reset_pause");
+    if (resetPause === "1") {
+      localStorage.removeItem("pauseTimeLeft");
+    }
+
+    // -- 1. 取得本關題目秒數 --
+    const timeLimit = {{ time_limit }}; // 從後端傳遞的本關時間（秒）
+
+    // -- 2. 讀/寫 localStorage 暫停時間 --
+    //    如果尚未存過 pauseTimeLeft，就預設為 30
+    //    若使用部分暫停後，下次載入需繼續扣除後的值
+    let pauseTimeLeft = localStorage.getItem("pauseTimeLeft");
+    if (!pauseTimeLeft) {
+      pauseTimeLeft = 30; // 最多可暫停的總秒數
+      localStorage.setItem("pauseTimeLeft", pauseTimeLeft);
+    } else {
+      pauseTimeLeft = parseInt(pauseTimeLeft, 10);
+    }
+
+    // -- 3. 控制倒數計時 + 暫停 --
+    let timeLeft = timeLimit;    // 本關剩餘答題秒數
+    let isPaused = false;        // 是否正在暫停
+    let pauseInterval = null;    // 計算「暫停秒數」的 interval
+    let mainInterval = null;     // 計算「題目倒數」的 interval
+
     const progressBar = document.getElementById("progress-bar");
     const timerText = document.getElementById("timer-text");
     const pauseBtn = document.getElementById("pause-btn");
+    const form = document.getElementById("challenge-form");
 
-    const interval = setInterval(() => {
-      if (!isPaused) {
-        timeLeft -= 1;
-        const progress = (timeLeft / timeLimit) * 100;
-        progressBar.style.width = `${progress}%`;
-        timerText.textContent = `${timeLeft} 秒`;
+    // 若已經沒有可用的暫停秒數，就關閉按鈕
+    if (pauseTimeLeft <= 0) {
+      pauseBtn.disabled = true;
+      pauseBtn.innerText = "暫停不可用(0)";
+    }
 
-        if (timeLeft <= 0) {
-          clearInterval(interval);
-          alert("時間到，遊戲結束！");
-          window.location.href = "/time_up"; // 時間結束後跳轉
+    // 每秒更新題目倒數
+    function startMainCountdown() {
+      mainInterval = setInterval(() => {
+        if (!isPaused) {
+          timeLeft -= 1;
+          updateDisplay();
+          if (timeLeft <= 0) {
+            // 題目時間用完 => 不作答、直接結束
+            clearInterval(mainInterval);
+            alert("時間到，遊戲結束！");
+            window.location.href = "/time_up"; 
+          }
         }
-      }
-    }, 1000);
+      }, 1000);
+    }
 
-    pauseBtn.addEventListener("click", () => {
-      isPaused = !isPaused;
-      pauseBtn.textContent = isPaused ? "繼續" : "暫停";
-    });
+    // 每秒更新進度條/顯示
+    function updateDisplay() {
+      const progress = (timeLeft / timeLimit) * 100;
+      progressBar.style.width = progress + "%";
+      timerText.textContent = timeLeft + " 秒";
+    }
+
+    // 切換暫停的函式
+    function togglePause() {
+      if (!isPaused) {
+        // 進入暫停狀態
+        if (pauseTimeLeft > 0) {
+          isPaused = true;
+          pauseBtn.innerText = "繼續";
+          // 啟動暫停倒數
+          pauseInterval = setInterval(() => {
+            pauseTimeLeft -= 1;
+            if (pauseTimeLeft <= 0) {
+              // 暫停秒數用盡，強制恢復倒數
+              pauseTimeLeft = 0;
+              stopPause();
+            }
+            // 同步回 localStorage
+            localStorage.setItem("pauseTimeLeft", pauseTimeLeft);
+            pauseBtn.innerText = "繼續(剩餘 " + pauseTimeLeft + " 秒)";
+          }, 1000);
+        }
+      } else {
+        // 解除暫停
+        stopPause();
+      }
+    }
+
+    // 解除暫停的細節
+    function stopPause() {
+      isPaused = false;
+      pauseBtn.innerText = (pauseTimeLeft > 0) 
+          ? "暫停(剩餘 " + pauseTimeLeft + " 秒)" 
+          : "暫停不可用(0)";
+      clearInterval(pauseInterval);
+      pauseInterval = null;
+      if (pauseTimeLeft <= 0) {
+        // 沒有剩餘暫停秒數 => disable 按鈕
+        pauseBtn.disabled = true;
+      }
+    }
+
+    // 首次畫面更新
+    updateDisplay();
+    // 啟動題目倒數
+    startMainCountdown();
+
+    // 綁定按鈕事件
+    pauseBtn.addEventListener("click", togglePause);
   });
   </script>
   <style>
@@ -182,61 +264,24 @@ challenge_template = """
       height: 120px; 
       object-fit: cover;
     }
-
-    .form-check {
-      margin-bottom: 1rem;
-    }
-
-    .form-check-label {
-      font-size: 1.2rem; /* 放大文字大小 */
-      padding: 15px; /* 增大點擊區域 */
-      display: block; /* 讓整個按鈕可點擊 */
-      border: 2px solid #007bff; /* 邊框色 */
-      border-radius: 10px; /* 圓角 */
-      text-align: center;
-      background-color: #f8f9fa; /* 背景顏色 */
-      color: #007bff; /* 文字顏色 */
-      cursor: pointer; /* 手型指標 */
-      transition: background-color 0.3s, color 0.3s, border-color 0.3s;
-    }
-
-    .form-check-label:hover {
-      background-color: #007bff; /* 滑鼠懸停時的背景色 */
-      color: white; /* 文字變白 */
-    }
-
-    .form-check-input {
-      display: none; /* 隱藏原始的 radio 按鈕 */
-    }
-
-    .form-check-input:checked + .form-check-label {
-      background-color: #004085; /* 選中後的背景色 */
-      color: white; /* 選中後的文字顏色 */
-      border-color: #004085; /* 選中後的邊框色 */
-    }
-
-    @media (max-width: 768px) {
-      .card {
-        margin-bottom: 1.5rem;
-      }
-    }
   </style>
 </head>
 <body class="bg-light">
   <div class="container mt-4">
-    <h2>第{{ level }}關 - V15</h2>
+    <h2>第{{ level }}關</h2>
     <p>玩家：{{ player_name }} | 累計分數：{{ score }} | 累計錯誤：{{ mistakes }}/3</p>
     <form id="challenge-form" method="POST" action="/submit">
-      <div class="row">
+      <div class="row g-4">
         {% for i in range(question_indices|length) %}
           {% set qidx = question_indices[i] %}
           {% set question = quiz_data[qidx] %}
-          <div class="col-12">
+          <div class="col-md-4">
             <div class="card">
               <img 
                 src="{{ url_for('static', filename='images/banner.gif') }}"
                 class="card-img-top" 
-                alt="Author">
+                alt="Author"
+                style="width: 100%; height: auto;">
               <div class="card-body">
                 <h5>{{ i+1 }}. {{ question.q }}</h5>
                 {% for c in range(question.choices|length) %}
@@ -266,9 +311,10 @@ challenge_template = """
         </div>
       </div>
       <p id="timer-text" class="text-center fw-bold"> -- 秒</p>
+   
       <div class="text-center mt-3">
         <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">
-          暫停
+          暫停(最多 30 秒)
         </button>
         <br>
         <button class="btn btn-success btn-lg" type="submit">交卷</button>
@@ -277,8 +323,6 @@ challenge_template = """
   </div>
 </body>
 </html>
-
-
 """
 
 # 答題結果頁
