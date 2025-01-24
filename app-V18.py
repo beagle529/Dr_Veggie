@@ -270,11 +270,9 @@ challenge_template = """
       <p id="timer-text" class="text-center fw-bold">-- 秒</p>
 
       <div class="text-center mt-3">
-        <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">
-          暫停 (最多 30 秒)
-        </button>
-        <br>
         <button class="btn btn-success btn-lg" type="submit">送出答案</button>
+        <br><br>
+        <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">暫停 (最多 30 秒)</button>
       </div>
     </form>
   </div>
