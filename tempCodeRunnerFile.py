@@ -7,6 +7,7 @@ from flask import Flask, request, render_template_string, session, redirect, url
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
 app.secret_key = "your_secret_key"  # 必須設定，以使用 session
+app.jinja_env.globals.update(enumerate=enumerate)
 
 # ------------------------------
 # 1. 檔案路徑設定
@@ -41,6 +42,7 @@ def load_quiz_data_from_txt(file_path):
     (題號,'題目','選項1','選項2','選項3','出題者'),
     第一個選項為正解。
     """
+    import re
     quiz_list = []
     pattern = re.compile(
         r'^\(\s*(\d+)\s*,\s*'          # 題號 (group1)
@@ -63,15 +65,14 @@ def load_quiz_data_from_txt(file_path):
             choices = [match.group(3), match.group(4), match.group(5)]
             author = match.group(6)
 
-            # 隨機排序選項，但要先記錄正解
-            correct_answer = match.group(3)
+            # 隨機排序選項
             random.shuffle(choices)
 
             quiz_list.append({
                 "q": question_text,
                 "choices": choices,
-                "answer": correct_answer,
-                "author": author
+                "answer": match.group(3),  # 第一個選項為正解
+                "image": author           # 出題者
             })
     return quiz_list
 
@@ -90,34 +91,36 @@ home_template = """
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>Dr.Veggie</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dr.Veggie V.16</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
+  
+<style>
     body {
       background: url("{{ url_for('static', filename='images/body_all.jpg') }}") 
                   no-repeat center center fixed;
       background-size: cover;
-      height: 100vh; 
+      height: 100vh; /* 設置視窗高度填滿 */
       margin: 0;
-      display: flex;
-      justify-content: center; 
-      align-items: center; 
+      display: flex; /* 啟用 Flexbox 布局 */
+      justify-content: center; /* 水平置中 */
+      align-items: center; /* 垂直置中 */
     }
     .container {
-      background-color: rgba(255, 255, 255, 0.8);
+      background-color: rgba(255, 255, 255, 0.8); /* 半透明白色背景 */
       border-radius: 8px;
       padding: 2rem;
       text-align: center;
       max-width: 500px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* 添加陰影提升層次 */
     }
-  </style>
+</style>
 </head>
 <body>
   <div class="container">
     <h1>Ðя▣Ṽ℮❡ℊїℯ</h1>
-    <p>總共 10 關，每關 3 題。但一次只顯示「1 題」，答完才會進入下一題。</p>
-    <p>第一關 40 秒，每完成一關減 2 秒，最低 10 秒。累計答錯 3 題則結束遊戲。</p>
+    <p>每關 3 題，共 10 關，累計錯 3 題即中止遊戲。</p>
+    <p>第一關限時40秒，每關減少2秒，超過時間即中止遊戲。</p>
     <form action="/start_game" method="POST" class="mb-3">
       <label>請輸入姓名 (1~10中英數):
         <input type="text"
@@ -137,22 +140,21 @@ home_template = """
 </html>
 """
 
-# 顯示單一題目頁面
+# 闖關頁（在進入新遊戲時，會偵測並移除 localStorage 的 pauseTimeLeft）
 challenge_template = """
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>第{{ level }}關 - 第{{ sub_q }}/3 題</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第{{ level }}關 v.16</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
+  
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const timeLimit = {{ time_limit }};
       let timeLeft = timeLimit;
-
-      // 讀取（或初始化） pauseTimeLeft
-      let pauseTimeLeft = localStorage.getItem("pauseTimeLeft") || 30;
+      let pauseTimeLeft = localStorage.getItem("pauseTimeLeft") || 30; // 默認暫停30秒
       let isPaused = false;
 
       const progressBar = document.getElementById("progress-bar");
@@ -162,19 +164,18 @@ challenge_template = """
 
       const updateDisplay = () => {
         const progress = (timeLeft / timeLimit) * 100;
-        progressBar.style.width = progress + "%";
-        timerText.textContent = timeLeft + " 秒";
+        progressBar.style.width = `${progress}%`;
+        timerText.textContent = `${timeLeft} 秒`;
       };
 
       const countdown = setInterval(() => {
         if (!isPaused) {
           timeLeft -= 1;
           updateDisplay();
+
           if (timeLeft <= 0) {
             clearInterval(countdown);
             alert("時間到，遊戲結束！");
-            // 將表單送往 time_up
-            form.action = "/time_up";
             form.submit();
           }
         }
@@ -182,11 +183,9 @@ challenge_template = """
 
       pauseBtn.addEventListener("click", () => {
         if (isPaused) {
-          // 若目前是暫停 -> 點擊恢復
           isPaused = false;
           pauseBtn.textContent = `暫停 (剩餘 ${pauseTimeLeft} 秒)`;
         } else if (pauseTimeLeft > 0) {
-          // 還有暫停秒數 -> 點擊暫停
           isPaused = true;
           pauseBtn.textContent = "繼續";
           const pauseCountdown = setInterval(() => {
@@ -212,52 +211,92 @@ challenge_template = """
 
   <style>
     .container {
-      max-width: 600px;
+      max-width: 80%;
       margin: auto;
       padding: 1rem;
     }
-    .progress {
-      height: 25px;
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 1rem;
     }
+
+    .card {
+      flex: 1 1 calc(33.333% - 1rem);
+      max-width: calc(33.333% - 1rem);
+      min-width: 200px;
+    }
+
+    .form-check {
+      margin-bottom: 1rem;
+    }
+
     .form-check-label {
       display: block;
+      width: 100%;
       background-color: #f8f9fa;
       border: 1px solid #dee2e6;
       padding: 1rem;
       border-radius: 0.5rem;
-      margin-bottom: 0.5rem;
+      text-align: center;
       cursor: pointer;
       transition: background-color 0.2s ease;
     }
+
     .form-check-input:checked + .form-check-label {
       background-color: #0d6efd;
       color: #fff;
+    }
+
+    .progress {
+      height: 25px;
+    }
+
+    @media (max-width: 768px) {
+      .card {
+        flex: 1 1 100%;
+        max-width: 100%;
+      }
+
+      .container {
+        padding: 0.5rem;
+      }
     }
   </style>
 </head>
 <body class="bg-light">
   <div class="container">
-    <h2 class="text-center">第{{ level }}關 - 第{{ sub_q }}/3 題</h2>
-    <p class="text-center">玩家：{{ player_name }} | 分數：{{ score }} | 錯誤：{{ mistakes }}/3</p>
-    <form id="challenge-form" method="POST" action="/submit_question">
-      <div class="mb-3">
-        <h5>{{ question_data.q }}</h5>
-        {% for i in range(question_data.choices|length) %}
-          <div class="form-check">
-            <input class="form-check-input"
-                   type="radio"
-                   name="answer"
-                   id="choice{{ i }}"
-                   value="{{ question_data.choices[i] }}"
-                   required>
-            <label class="form-check-label" for="choice{{ i }}">
-              {{ question_data.choices[i] }}
-            </label>
+    <h2 class="text-center">第{{ level }}關</h2>
+    <p class="text-center">玩家：{{ player_name }} | 累計分數：{{ score }} | 累計錯誤：{{ mistakes }}/3</p>
+    <form id="challenge-form" method="POST" action="/submit">
+      <div class="row">
+        {% for i in range(question_indices|length) %}
+          {% set qidx = question_indices[i] %}
+          {% set question = quiz_data[qidx] %}
+          <div class="card">
+            <div class="card-body">
+              <h5>{{ i+1 }}. {{ question.q }}</h5>
+              {% for c in range(question.choices|length) %}
+                <div class="form-check">
+                  <input 
+                    class="form-check-input" 
+                    type="radio" 
+                    id="q{{ i }}c{{ c }}" 
+                    name="q{{ i }}" 
+                    value="{{ question.choices[c] }}" 
+                    required>
+                  <label class="form-check-label" for="q{{ i }}c{{ c }}">
+                    {{ question.choices[c] }}
+                  </label>
+                </div>
+              {% endfor %}
+              <p class="text-muted small mt-2 text-end">出題者：{{ question.image }}</p>
+            </div>
           </div>
         {% endfor %}
-        <p class="text-muted small mt-2 text-end">出題者：{{ question_data.author }}</p>
       </div>
-
       <div class="progress mb-3">
         <div id="progress-bar" 
              class="progress-bar bg-warning" 
@@ -268,54 +307,58 @@ challenge_template = """
              aria-valuemax="100">
         </div>
       </div>
-      <p id="timer-text" class="text-center fw-bold">-- 秒</p>
-
+      <p id="timer-text" class="text-center fw-bold"> -- 秒</p>
       <div class="text-center mt-3">
-        <button class="btn btn-success btn-lg" type="submit">送出答案</button>
-        <br><br>
-        <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">暫停 (最多 30 秒)</button>
+        <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">
+          暫停 (最多 30 秒)
+        </button>
+        <br>
+        <button class="btn btn-success btn-lg" type="submit">交卷</button>
       </div>
     </form>
   </div>
 </body>
 </html>
+
+
 """
 
-# 顯示「本關」結果（3 題答題情況）
+# 答題結果頁
 result_template = """
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>結果 - 第{{ level }}關</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
   <div class="container mt-4">
-    <h2>第{{ level }}關 - 答題結果</h2>
+    <h2>答題結果 - 第{{ level }}關</h2>
     <p>玩家：{{ player_name }}</p>
-    <p>本關得分：{{ round_score }} | 累計分數：{{ total_score }} | 錯誤：{{ mistakes }}/3</p>
+    <p>本關得分：{{ round_score }} | 累計分數：{{ total_score }} | 累計錯誤：{{ mistakes }}/3</p>
     <ul class="list-group">
-      {% for i in range(questions|length) %}
+      {% for i in range(question_indices|length) %}
+        {% set qidx = question_indices[i] %}
+        {% set question = quiz_data[qidx] %}
         <li class="list-group-item">
-          <strong>{{ i+1 }}. {{ questions[i].question.q }}</strong><br>
-          您的答案：{{ questions[i].user_answer }}
-          {% if questions[i].user_answer == questions[i].question.answer %}
+          <strong>{{ i+1 }}. {{ question.q }}</strong><br>
+          您的答案：{{ user_answers[i] }}
+          {% if user_answers[i] == question.answer %}
             <span class="text-success">（答對）</span>
           {% else %}
-            <span class="text-danger">（答錯，正解：{{ questions[i].question.answer }}）</span>
+            <span class="text-danger">（答錯，正解：{{ question.answer }}）</span>
           {% endif %}
-          <p class="text-muted small mt-2 text-end">出題者：{{ questions[i].question.author }}</p>
+          <p class="text-muted small mt-2 text-end">出題者：{{ question.image }}</p>
         </li>
       {% endfor %}
     </ul>
-
     {% if mistakes < 3 and level < 10 %}
       <div class="text-center mt-3">
-        <a href="/next_level" class="btn btn-primary btn-lg">進入第{{ level + 1 }}關</a>
+        <a href="/challenge?level={{ level + 1 }}" class="btn btn-primary btn-lg">進入第{{ level + 1 }}關</a>
       </div>
     {% else %}
-      <!-- 遊戲結束 -->
       <div class="text-center mt-3">
         <a href="/ranking" class="btn btn-secondary btn-lg">查看排行榜</a>
         <a href="/" class="btn btn-primary btn-lg">回首頁</a>
@@ -332,6 +375,7 @@ ranking_template = """
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>排行榜</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -351,7 +395,7 @@ ranking_template = """
       <tbody>
         {% for player in ranking %}
         <tr>
-          <td>{{ loop.index + (page - 1) * 10 }}</td>
+          <td>{{ loop.index + (page - 1) * 20 }}</td>
           <td>{{ player.name }}</td>
           <td>{{ player.score }}</td>
           <td>{{ player.level }}</td>
@@ -360,19 +404,25 @@ ranking_template = """
         {% endfor %}
       </tbody>
     </table>
+    
     <!-- 分頁導航 -->
     <nav aria-label="Page navigation">
       <ul class="pagination justify-content-center">
+        <!-- 上一頁 -->
         <li class="page-item {% if page <= 1 %}disabled{% endif %}">
           <a class="page-link" href="{{ url_for('ranking', page=page-1) }}" aria-label="Previous">
             <span aria-hidden="true">&laquo;</span>
           </a>
         </li>
+
+        <!-- 頁碼 -->
         {% for p in range(1, total_pages + 1) %}
         <li class="page-item {% if p == page %}active{% endif %}">
           <a class="page-link" href="{{ url_for('ranking', page=p) }}">{{ p }}</a>
         </li>
         {% endfor %}
+
+        <!-- 下一頁 -->
         <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
           <a class="page-link" href="{{ url_for('ranking', page=page+1) }}" aria-label="Next">
             <span aria-hidden="true">&raquo;</span>
@@ -385,18 +435,12 @@ ranking_template = """
   </div>
 </body>
 </html>
+
 """
 
 # ------------------------------
 # 5. Flask 路由
 # ------------------------------
-
-def get_time_limit(level):
-    """第一關 40 秒，每完成一關減 2 秒，最少不低於 10 秒。"""
-    base_time = 40
-    tl = base_time - (level - 1) * 2
-    return max(tl, 10)
-
 @app.route("/")
 def home():
     return render_template_string(home_template)
@@ -407,172 +451,92 @@ def start_game():
     if not re.match(r'^[A-Za-z0-9一-龥]{1,10}$', player_name):
         return "<p>姓名格式錯誤。<a href='/'>返回</a></p>"
 
-    # 初始化遊戲狀態
     session['player_name'] = player_name
     session['score'] = 0
     session['level'] = 1
     session['mistakes'] = 0
+    session['remaining_indices'] = list(range(len(quiz_data)))
 
-    # 洗牌所有題目的索引
-    all_indices = list(range(len(quiz_data)))
-    random.shuffle(all_indices)
-    session['remaining_indices'] = all_indices
+    # 在此帶上 reset_pause=1，表示新玩家開始 => 要重置暫停秒數
+    return redirect(url_for('challenge', level=1, reset_pause=1))
 
-    # 先進入第一關的抽題流程
-    return redirect(url_for('setup_level'))
-
-@app.route("/setup_level")
-def setup_level():
-    """
-    進入新的一關前的準備：抽 3 題，重設 sub_q=1。
-    """
+@app.route("/challenge")
+def challenge():
     if 'player_name' not in session:
         return redirect(url_for('home'))
 
-    level = session.get('level', 1)
-    mistakes = session.get('mistakes', 0)
+    level = int(request.args.get("level", 1))
+    session['level'] = level
 
-    # 若錯誤已達 3 或超過 10 關，就結束
-    if mistakes >= 3 or level > 10:
-        return redirect(url_for('home'))
+    # 計算每關的答題時間
+    base_time = 40  # 第一關40秒
+    time_limit = max(10, base_time - (level - 1) * 2)  # 每關減少2秒，最低保證10秒
 
-    # 每關 3 題（但顯示時是一題一題出）
+    # 若錯誤達 3 或題目不夠，就強制結束
     remaining = session.get('remaining_indices', [])
-    if len(remaining) < 3:
-        # 題庫不夠 -> 提早結束
+    if len(remaining) < 3 or session['mistakes'] >= 3:
         return redirect(url_for('home'))
 
-    # 抽出 3 題
-    current_questions = remaining[:3]
-    session['current_questions'] = current_questions
-    session['remaining_indices'] = remaining[3:]
+    # 每關抽 3 題
+    selected_indices = random.sample(remaining, 3)
+    for idx in selected_indices:
+        remaining.remove(idx)
 
-    # 重設此關的作答狀態
-    session['sub_q'] = 1
-    # 用來暫存該關 3 題的使用者答案
-    session['level_user_answers'] = [None, None, None]
+    session['question_indices'] = selected_indices
+    session['remaining_indices'] = remaining
 
-    return redirect(url_for('show_question'))
-
-@app.route("/show_question")
-def show_question():
-    """
-    顯示當前 sub_q 的題目（單一題目）。
-    """
-    if 'player_name' not in session:
-        return redirect(url_for('home'))
-
-    level = session['level']
-    sub_q = session['sub_q']
-    mistakes = session['mistakes']
-    score = session['score']
-    current_questions = session.get('current_questions', [])
-
-    # 防呆
-    if mistakes >= 3 or level > 10:
-        return redirect(url_for('home'))
-
-    # sub_q 應該在 1~3 之間
-    if not (1 <= sub_q <= 3):
-        return redirect(url_for('home'))
-
-    # 取出當前題目
-    qidx = current_questions[sub_q - 1]  # sub_q=1 -> index=0
-    question_data = quiz_data[qidx]
-
-    # 計算本關限時
-    time_limit = get_time_limit(level)
+    # 將 reset_pause 參數原封不動傳給模板，以便模板前端判斷是否要重置
+    reset_pause = request.args.get("reset_pause", "0")
 
     return render_template_string(
         challenge_template,
         level=level,
-        sub_q=sub_q,
         player_name=session['player_name'],
-        score=score,
-        mistakes=mistakes,
-        question_data=question_data,
-        time_limit=time_limit
+        score=session['score'],
+        mistakes=session['mistakes'],
+        question_indices=selected_indices,
+        quiz_data=quiz_data,
+        time_limit=time_limit,
+        reset_pause=reset_pause
     )
 
-@app.route("/submit_question", methods=["POST"])
-def submit_question():
-    """
-    接收單題作答，判斷對錯後，若尚未 3 題，繼續下一題；
-    若已到第 3 題，則進行關卡統整結果。
-    """
+@app.route("/submit", methods=["POST"])
+def submit():
     if 'player_name' not in session:
         return redirect(url_for('home'))
 
-    level = session['level']
-    sub_q = session['sub_q']
-    mistakes = session['mistakes']
-    score = session['score']
-    current_questions = session.get('current_questions', [])
-    level_user_answers = session.get('level_user_answers', [])
+    question_indices = session.get('question_indices', [])
+    level = session.get('level', 1)
+    total_score = session.get('score', 0)
+    mistakes = session.get('mistakes', 0)
 
-    user_answer = request.form.get("answer", None)
-
-    # 取出當前題目的正解
-    qidx = current_questions[sub_q - 1]
-    correct_answer = quiz_data[qidx]["answer"]
-
-    # 判斷對錯
-    if user_answer == correct_answer:
-        score += 1
-    else:
-        mistakes += 1
-
-    # 暫存答案
-    level_user_answers[sub_q - 1] = user_answer
-
-    # 更新 session
-    session['score'] = score
-    session['mistakes'] = mistakes
-    session['level_user_answers'] = level_user_answers
-
-    # 若錯誤已達 3，直接結束遊戲 -> 最後結果
-    if mistakes >= 3:
-        finalize_game()
-        return redirect(url_for('show_level_result'))
-
-    # 若還沒答滿 3 題 -> sub_q+1
-    if sub_q < 3:
-        session['sub_q'] = sub_q + 1
-        return redirect(url_for('show_question'))
-    else:
-        # 本關 3 題作答完 -> 進入關卡結果
-        return redirect(url_for('show_level_result'))
-
-@app.route("/show_level_result")
-def show_level_result():
-    """
-    顯示本關 3 題答題情況，如未達 3 錯且未到第 10 關，可繼續下一關。
-    """
-    if 'player_name' not in session:
-        return redirect(url_for('home'))
-
-    level = session['level']
-    mistakes = session['mistakes']
-    total_score = session['score']
-    current_questions = session.get('current_questions', [])
-    level_user_answers = session.get('level_user_answers', [])
-
-    # 計算本關得分
+    user_answers = []
     round_score = 0
-    details = []
-    for i, qidx in enumerate(current_questions):
-        qdata = quiz_data[qidx]
-        user_ans = level_user_answers[i]
-        if user_ans == qdata["answer"]:
-            round_score += 1
-        details.append({
-            "question": qdata,
-            "user_answer": user_ans
-        })
 
-    # 若已到第10關 或 錯誤滿3 -> 記錄最終
+    for i, qidx in enumerate(question_indices):
+        question = quiz_data[qidx]
+        user_answer = request.form.get(f"q{i}", "未作答")
+        user_answers.append(user_answer)
+        if user_answer == question["answer"]:
+            round_score += 1
+        else:
+            mistakes += 1
+
+    total_score += round_score
+    session['score'] = total_score
+    session['mistakes'] = mistakes
+
+    # 若累計錯誤 >=3 或到第10關 => 遊戲結束
     if mistakes >= 3 or level == 10:
-        finalize_game()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        leaderboard.append({
+            "name": session['player_name'],
+            "score": total_score,
+            "level": level,
+            "timestamp": now_str
+        })
+        leaderboard.sort(key=lambda x: x['score'], reverse=True)
+        save_leaderboard(LEADERBOARD_FILE_PATH, leaderboard)
 
     return render_template_string(
         result_template,
@@ -581,51 +545,44 @@ def show_level_result():
         round_score=round_score,
         total_score=total_score,
         mistakes=mistakes,
-        questions=details
+        question_indices=question_indices,
+        user_answers=user_answers,
+        quiz_data=quiz_data
     )
-
-@app.route("/next_level")
-def next_level():
-    """
-    進入下一關
-    """
-    if 'player_name' not in session:
-        return redirect(url_for('home'))
-    session['level'] = session['level'] + 1
-    return redirect(url_for('setup_level'))
-
-def finalize_game():
-    """遊戲結束時，將成績寫入排行榜。"""
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    leaderboard.append({
-        "name": session['player_name'],
-        "score": session['score'],
-        "level": session['level'],
-        "timestamp": now_str
-    })
-    leaderboard.sort(key=lambda x: x['score'], reverse=True)
-    save_leaderboard(LEADERBOARD_FILE_PATH, leaderboard)
 
 @app.route("/time_up")
 def time_up():
     """
-    題目答題時間已用完 -> 強制結束，記錄分數到排行榜。
+    題目答題時間已用完，強制結束遊戲，不用作答。
+    直接記錄當前累計分數到排行榜。
     """
     if 'player_name' in session:
-        finalize_game()
+        level = session.get('level', 1)
+        total_score = session.get('score', 0)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        leaderboard.append({
+            "name": session['player_name'],
+            "score": total_score,
+            "level": level,
+            "timestamp": now_str
+        })
+        leaderboard.sort(key=lambda x: x['score'], reverse=True)
+        save_leaderboard(LEADERBOARD_FILE_PATH, leaderboard)
+    # 清空 session 或保留皆可
     session.clear()
 
     return """
     <html>
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>時間到</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
     <body class="bg-light">
       <div class="container mt-5">
         <h2>時間到，遊戲結束</h2>
-        <p>您的答題時間已用完。</p>
+        <p>您的答題時間已用完，未作答。</p>
         <a href="/ranking" class="btn btn-secondary btn-lg">查看排行榜</a>
         <a href="/" class="btn btn-primary btn-lg">回首頁</a>
       </div>
@@ -635,13 +592,19 @@ def time_up():
 
 @app.route("/ranking")
 def ranking():
-    # 每頁顯示 10 筆
+    # 每頁顯示的記錄數量
     records_per_page = 10
+    
+    # 當前頁數，默認為第 1 頁
     page = request.args.get("page", 1, type=int)
 
+    # 總記錄數
     total_records = len(leaderboard)
+
+    # 計算總頁數
     total_pages = (total_records + records_per_page - 1) // records_per_page
 
+    # 獲取當前頁的記錄範圍
     start_index = (page - 1) * records_per_page
     end_index = start_index + records_per_page
     current_page_records = leaderboard[start_index:end_index]
@@ -650,8 +613,9 @@ def ranking():
         ranking_template,
         ranking=current_page_records,
         page=page,
-        total_pages=total_pages
+        total_pages=total_pages,
     )
+
 
 # ------------------------------
 # 6. 主程式啟動
