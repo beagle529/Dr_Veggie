@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}結果 - 第{{ level }}關{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>第{{ level }}關 - 答題結果</h2>
+    <p>玩家：{{ player_name }}</p>
+    <p>本關得分：{{ round_score }} | 累計分數：{{ total_score }} | 錯誤：{{ mistakes }}/3</p>
+    <ul class="list-group">
+        {% for item in questions %}
+        <li class="list-group-item">
+            <strong>{{ loop.index }}. {{ item.question.q }}</strong><br>
+            您的答案：{{ item.user_answer }}
+            {% if item.user_answer == item.question.answer %}
+            <span class="text-success">（答對）</span>
+            {% else %}
+            <span class="text-danger">（答錯，正解：{{ item.question.answer }}）</span>
+            {% endif %}
+            <p class="text-muted small mt-2 text-end">出題者：{{ item.question.author }}</p>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="text-center mt-3">
+        {% if mistakes < 3 and level < 10 %} <a href="{{ url_for('next_level') }}" class="btn btn-primary btn-lg">進入第{{
+            level + 1 }}關</a>
+            {% else %}
+            <a href="{{ url_for('ranking') }}" class="btn btn-secondary btn-lg">查看排行榜</a>
+            <a href="{{ url_for('home') }}" class="btn btn-primary btn-lg">回首頁</a>
+            {% endif %}
+    </div>
+</div>
+{% endblock %}

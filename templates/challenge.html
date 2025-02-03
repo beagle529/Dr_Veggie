@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}第{{ level }}關 - 第{{ sub_q }}/3 題{% endblock %}
+
+{% block head_extra %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const timeLimit = {{ time_limit }
+    };
+    let timeLeft = timeLimit;
+    let pauseTimeLeft = 30;
+    let isPaused = false;
+    const progressBar = document.getElementById("progress-bar");
+    const timerText = document.getElementById("timer-text");
+    const pauseBtn = document.getElementById("pause-btn");
+    const form = document.getElementById("challenge-form");
+    const updateDisplay = () => {
+        const progress = (timeLeft / timeLimit) * 100;
+        progressBar.style.width = progress + "%";
+        timerText.textContent = timeLeft + " 秒";
+    };
+    const countdown = setInterval(() => {
+        if (!isPaused) {
+            timeLeft -= 1;
+            updateDisplay();
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                alert("時間到，遊戲結束！");
+                form.action = "{{ url_for('time_up') }}";
+                form.submit();
+            }
+        }
+    }, 1000);
+    pauseBtn.addEventListener("click", () => {
+        if (isPaused) {
+            isPaused = false;
+            pauseBtn.textContent = `暫停 (剩餘 ${pauseTimeLeft} 秒)`;
+        } else if (pauseTimeLeft > 0) {
+            isPaused = true;
+            pauseBtn.textContent = "繼續";
+            const pauseCountdown = setInterval(() => {
+                if (!isPaused || pauseTimeLeft <= 0) {
+                    clearInterval(pauseCountdown);
+                    isPaused = false;
+                    pauseBtn.textContent = `暫停 (剩餘 ${pauseTimeLeft} 秒)`;
+                    if (pauseTimeLeft <= 0) {
+                        pauseBtn.disabled = true;
+                    }
+                } else {
+                    pauseTimeLeft -= 1;
+                    pauseBtn.textContent = `繼續 (剩餘 ${pauseTimeLeft} 秒)`;
+                }
+            }, 1000);
+        }
+    });
+    updateDisplay();
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="padding: 2rem;">
+    <h2 class="text-center">第{{ level }}關 - 第{{ sub_q }}/3 題</h2>
+    <p class="text-center">玩家：{{ player_name }} | 分數：{{ score }} | 錯誤：{{ mistakes }}/3</p>
+    <form id="challenge-form" method="POST" action="{{ url_for('submit_question') }}" onsubmit="disableSubmit()">
+        <div class="mb-3">
+            <h5>{{ question_data.q }}</h5>
+            {% for choice in question_data.choices %}
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="answer" id="choice{{ loop.index0 }}"
+                    value="{{ choice }}" required>
+                <label class="form-check-label" for="choice{{ loop.index0 }}">{{ choice }}</label>
+            </div>
+            {% endfor %}
+            <p class="text-muted small mt-2 text-end">出題者：{{ question_data.author }}</p>
+        </div>
+        <div class="progress mb-3">
+            <div id="progress-bar" class="progress-bar bg-warning" role="progressbar" style="width: 100%;"
+                aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <p id="timer-text" class="text-center fw-bold">-- 秒</p>
+        <div class="text-center mt-3">
+            <button id="submit-btn" class="btn btn-success btn-lg" type="submit">送出答案</button>
+            <br><br>
+            <button type="button" id="pause-btn" class="btn btn-warning btn-lg mb-2">暫停 (最多 30 秒)</button>
+        </div>
+    </form>
+    <script>
+        function disableSubmit() {
+            const submitBtn = document.getElementById("submit-btn");
+            submitBtn.disabled = true;
+            submitBtn.textContent = "提交中...";
+        }
+    </script>
+</div>
+{% endblock %}
